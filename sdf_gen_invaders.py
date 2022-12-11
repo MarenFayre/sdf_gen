@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import scipy.ndimage
 from PIL import Image
 import sys
-from numba import njit
+
+img = Image.open(sys.argv[1])
 
 # [-- Custom figure plotting with labels
 fig = plt.figure(figsize=(16, 8))
@@ -19,24 +20,21 @@ def plot(img, index, show_text=True, cmap="coolwarm"):
     return ax
 # --]
 
-@njit
 def evaluate_parabolla(height, px, x):
     return (px-x)*(px-x)+height
 
-@njit
 def compute_rows(img):
     new_img = np.ones_like(img)
     rows, cols = img.shape
-    for y in range(0, rows): # for each row
-        for x in range(0, cols): # for each cell
+    for y in range(0, cols): # for each row
+        for x in range(0, rows): # for each cell
             sdf_min = img[y,x]
-            for px in range(0, cols): # for each parabolla on this row
+            for px in range(0, rows): # for each parabolla on this row
                 pheight = img[y,px]
                 sdf_min = min(sdf_min, evaluate_parabolla(pheight, px, x))
             new_img[y,x] = sdf_min
     return new_img
 
-@njit
 def compute_euclidian_distance(img):
     img = compute_rows(img)
     img = img.transpose()
@@ -44,15 +42,18 @@ def compute_euclidian_distance(img):
     img = img.transpose()
     return img
 
-
-image = Image.open(sys.argv[1])
-image_bw = image.convert("L")
-
-img = np.array(image_bw, np.float32) # [0., 255.] f32
-img = np.where(img < 128, 1.0, 0.0)
-
-# plt.imshow(img)
-# plt.show()
+img = np.array([
+    [0, 0, 0, 0 ,0, 0, 0, 0, 0, 0],
+    [0, 0, 1, 0 ,0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 1 ,0, 0, 1, 0, 0, 0],
+    [0, 0, 1, 1 ,1, 1, 1, 1, 0, 0],
+    [0, 1, 1, 0 ,1, 1, 0, 1, 1, 0],
+    [1, 0, 1, 1 ,1, 1, 1, 1, 0, 1],
+    [1, 0, 1, 1 ,1, 1, 1, 1, 0, 1],
+    [0, 0, 1, 0 ,0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 1 ,1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0 ,0, 0, 0, 0, 0, 0],
+], np.float32)
 
 def edt_encode(img):
     img = img.copy()
@@ -74,18 +75,25 @@ sdf_gray = sdf / biggest_dim # remap to [-1, 1] range
 sdf_gray = (sdf_gray / 2.0) + 0.5 # remap to [0, 1]  range
 sdf_gray = (sdf_gray * 255.0).astype(np.uint8)  # Convert to grayscale [0, 255]
 
-# Save
-im = Image.fromarray(sdf_gray)
-import os
-pre, ext = os.path.splitext(sys.argv[1])
-im.save(f"{pre}-sdf.png")
 
+# -- Plot all the things:
 
-ax = plt.subplot(1,1,1)
-ax.imshow(sdf_gray, cmap="gray")
-ε = 1
-ax.contourf(sdf_gray, [255-128-ε, 255-128+ε], colors=["red"])
+plot(img_positive, 1).set_title('Positive encoded image')
+plot(img_negative, 2).set_title('Negative encoded image')
+
+plot(edt_positive, 5).set_title('Positive euclidian distance: A')
+plot(edt_negative, 6).set_title('Negative euclidian distance: B')
+
+plot(sdf, 7).set_title('Normalized SDF: sqrt(A)-sqrt(B)')
+plot(sdf_gray, 8, cmap="gray").set_title('SDF to grayscale')
+
+sdf_zoomed = scipy.ndimage.zoom(sdf_gray, 8, order=1) # Bilinear resample for clean contour
+ε = 3
+ax = plot(sdf_zoomed, 4, cmap="gray", show_text=False)
+ax.contourf(sdf_zoomed, [255-128-ε, 255-128+ε], colors=["red"])
 ax.set_title('Grayscale /w bilinear contour y=128')
 
+
 plt.tight_layout()
+plt.savefig("Figure.png")
 plt.show()
